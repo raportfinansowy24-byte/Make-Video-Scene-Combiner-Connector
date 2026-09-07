@@ -1,0 +1,6 @@
+{
+  "name": "Make Video Scene Combiner Connector",
+  "description": "HTTP connector and FFmpeg video scene combiner service for Make.com and n8n automations, featuring subtitle overlays with Montserrat font, background audio mixing, and live test rendering.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
