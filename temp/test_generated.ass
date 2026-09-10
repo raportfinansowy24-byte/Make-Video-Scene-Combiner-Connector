@@ -1,0 +1,19 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: HormoziStyle,Montserrat,58,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,6,2,2,30,30,220,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.27,HormoziStyle,,0,0,0,,{\c&H0000E6FF&\fscx118\fscy118\b1}CZY{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}WIESZ {\c&H00FFFFFF&\b1}ŻE {\c&H00FFFFFF&\b1}KOSMOS {\c&H00FFFFFF&\b1}SKRYWA {\c&H00FFFFFF&\b1}WIELKIE {\c&H00FFFFFF&\b1}TAJEMNICE\N
+Dialogue: 0,0:00:00.27,0:00:00.73,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}CZY {\c&H0000E6FF&\fscx118\fscy118\b1}WIESZ{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}ŻE {\c&H00FFFFFF&\b1}KOSMOS {\c&H00FFFFFF&\b1}SKRYWA {\c&H00FFFFFF&\b1}WIELKIE {\c&H00FFFFFF&\b1}TAJEMNICE\N
+Dialogue: 0,0:00:00.73,0:00:00.92,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}CZY {\c&H00FFFFFF&\b1}WIESZ {\c&H0000E6FF&\fscx118\fscy118\b1}ŻE{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}KOSMOS {\c&H00FFFFFF&\b1}SKRYWA {\c&H00FFFFFF&\b1}WIELKIE {\c&H00FFFFFF&\b1}TAJEMNICE\N
+Dialogue: 0,0:00:00.92,0:00:01.47,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}CZY {\c&H00FFFFFF&\b1}WIESZ {\c&H00FFFFFF&\b1}ŻE {\c&H0000E6FF&\fscx118\fscy118\b1}KOSMOS{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}SKRYWA {\c&H00FFFFFF&\b1}WIELKIE {\c&H00FFFFFF&\b1}TAJEMNICE\N
+Dialogue: 0,0:00:01.47,0:00:02.02,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}CZY {\c&H00FFFFFF&\b1}WIESZ {\c&H00FFFFFF&\b1}ŻE {\c&H00FFFFFF&\b1}KOSMOS {\c&H0000E6FF&\fscx118\fscy118\b1}SKRYWA{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}WIELKIE {\c&H00FFFFFF&\b1}TAJEMNICE\N
+Dialogue: 0,0:00:02.02,0:00:02.67,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}CZY {\c&H00FFFFFF&\b1}WIESZ {\c&H00FFFFFF&\b1}ŻE {\c&H00FFFFFF&\b1}KOSMOS {\c&H00FFFFFF&\b1}SKRYWA {\c&H0000E6FF&\fscx118\fscy118\b1}WIELKIE{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}TAJEMNICE\N
+Dialogue: 0,0:00:02.67,0:00:03.50,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}CZY {\c&H00FFFFFF&\b1}WIESZ {\c&H00FFFFFF&\b1}ŻE {\c&H00FFFFFF&\b1}KOSMOS {\c&H00FFFFFF&\b1}SKRYWA {\c&H00FFFFFF&\b1}WIELKIE {\c&H0000E6FF&\fscx118\fscy118\b1}TAJEMNICE{\r\c&H00FFFFFF&\b1}\N

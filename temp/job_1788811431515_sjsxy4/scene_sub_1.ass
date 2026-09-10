@@ -1,0 +1,17 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: HormoziStyle,Montserrat,54,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,6,2,2,24,24,220,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.45,HormoziStyle,,0,0,0,,{\c&H0000E6FF&\fscx118\fscy118\b1}WITAJ{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}W {\c&H00FFFFFF&\b1}PRZYSZŁOŚCI {\c&H00FFFFFF&\b1}MONTAŻU\N
+Dialogue: 0,0:00:01.45,0:00:02.03,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}WITAJ {\c&H0000E6FF&\fscx118\fscy118\b1}W{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}PRZYSZŁOŚCI {\c&H00FFFFFF&\b1}MONTAŻU\N
+Dialogue: 0,0:00:02.03,0:00:05.22,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}WITAJ {\c&H00FFFFFF&\b1}W {\c&H0000E6FF&\fscx118\fscy118\b1}PRZYSZŁOŚCI{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}MONTAŻU\N
+Dialogue: 0,0:00:05.22,0:00:07.25,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}WITAJ {\c&H00FFFFFF&\b1}W {\c&H00FFFFFF&\b1}PRZYSZŁOŚCI {\c&H0000E6FF&\fscx118\fscy118\b1}MONTAŻU{\r\c&H00FFFFFF&\b1}\N
+Dialogue: 0,0:00:07.25,0:00:09.00,HormoziStyle,,0,0,0,,{\c&H0000E6FF&\fscx118\fscy118\b1}WIDEO.{\r\c&H00FFFFFF&\b1}\N

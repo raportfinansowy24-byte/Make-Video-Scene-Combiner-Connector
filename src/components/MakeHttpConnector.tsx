@@ -34,7 +34,10 @@ import {
   Sparkles,
   Webhook,
   Send,
-  ArrowRight
+  ArrowRight,
+  Mic,
+  Pause,
+  VolumeX
 } from 'lucide-react';
 import { Scene, SystemHealth, JobStatusResponse, ToastItem } from '../types';
 import { AiViralAutoPilot } from './AiViralAutoPilot';
@@ -149,30 +152,36 @@ export const MakeHttpConnector: React.FC = () => {
       id: 'scene-1',
       videoUrl: SAMPLE_CLIPS[0].url,
       subtitles: 'KONEKTOR MAKE.COM - WIDEO Z NAPISAMI',
+      voiceover_text: 'Oto profesjonalny konektor Make.com tworzący filmy z napisami i lektorem.',
       trimStart: 0,
       trimEnd: 4,
       captionStyle: {
-        fontSize: 42,
-        fontColor: 'yellow',
+        fontSize: 48,
+        fontColor: 'white',
         outlineColor: 'black',
-        outlineWidth: 3,
+        outlineWidth: 5,
         boxColor: 'black@0.6',
-        position: 'bottom'
+        position: 'bottom',
+        animation: 'word-by-word',
+        highlightColor: 'yellow'
       }
     },
     {
       id: 'scene-2',
       videoUrl: SAMPLE_CLIPS[1].url,
       subtitles: 'CZCIONKA MONTSERRAT-BOLD.TTF',
+      voiceover_text: 'Wszystkie napisy generowane są z oryginalną czcionką Montserrat Bold.',
       trimStart: 0,
       trimEnd: 4,
       captionStyle: {
-        fontSize: 38,
+        fontSize: 48,
         fontColor: 'white',
         outlineColor: 'black',
-        outlineWidth: 3,
+        outlineWidth: 5,
         boxColor: 'black@0.6',
-        position: 'center'
+        position: 'center',
+        animation: 'word-by-word',
+        highlightColor: 'lime'
       }
     }
   ]);
@@ -182,6 +191,61 @@ export const MakeHttpConnector: React.FC = () => {
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string>('');
   const [audioVolume, setAudioVolume] = useState<number>(0.3);
   const [fps, setFps] = useState<number>(30);
+
+  // Global TTS & Word-by-Word Caption Settings
+  const [globalTtsEnabled, setGlobalTtsEnabled] = useState<boolean>(true);
+  const [globalTtsLanguage, setGlobalTtsLanguage] = useState<string>('Polski');
+  const [globalSyncDuration, setGlobalSyncDuration] = useState<boolean>(true);
+  const [globalCaptionAnimation, setGlobalCaptionAnimation] = useState<'word-by-word' | 'single-word' | 'classic'>('word-by-word');
+  const [globalHighlightColor, setGlobalHighlightColor] = useState<'yellow' | 'lime' | 'cyan' | 'red' | 'white'>('yellow');
+  const [voicePreviewLoading, setVoicePreviewLoading] = useState<boolean>(false);
+  const [voicePreviewPlaying, setVoicePreviewPlaying] = useState<boolean>(false);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleToggleVoicePreview = async () => {
+    if (voicePreviewPlaying && audioPreviewRef.current) {
+      audioPreviewRef.current.pause();
+      setVoicePreviewPlaying(false);
+      return;
+    }
+
+    setVoicePreviewLoading(true);
+    try {
+      const sampleText = globalTtsLanguage === 'Polski'
+        ? 'To jest podgląd głosu lektora dla Twojego zmontowanego filmu wideo.'
+        : 'This is a voice preview for your rendered viral video.';
+
+      const res = await fetch('/api/tts/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: sampleText,
+          language: globalTtsLanguage
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Błąd generowania próbki głosu');
+
+      if (audioPreviewRef.current) {
+        audioPreviewRef.current.pause();
+      }
+
+      const audio = new Audio(data.audioUrl || data.streamUrl);
+      audioPreviewRef.current = audio;
+      audio.onplay = () => setVoicePreviewPlaying(true);
+      audio.onended = () => setVoicePreviewPlaying(false);
+      audio.onerror = () => {
+        setVoicePreviewPlaying(false);
+        addToast('error', 'Błąd audio', 'Nie można odtworzyć próbki lektora.');
+      };
+      await audio.play();
+    } catch (err) {
+      addToast('error', 'Błąd próbki głosu', (err as Error).message);
+    } finally {
+      setVoicePreviewLoading(false);
+    }
+  };
 
   // Real-time Rendering State
   const [isRendering, setIsRendering] = useState<boolean>(false);
@@ -337,15 +401,25 @@ export const MakeHttpConnector: React.FC = () => {
       scenes: scenes.map((s) => ({
         videoUrl: s.videoUrl,
         subtitles: s.subtitles,
+        voiceover_text: s.voiceover_text || s.subtitles,
         trimStart: s.trimStart,
         trimEnd: s.trimEnd,
-        captionStyle: s.captionStyle
+        captionStyle: {
+          ...s.captionStyle,
+          animation: s.captionStyle?.animation || globalCaptionAnimation,
+          highlightColor: s.captionStyle?.highlightColor || globalHighlightColor
+        }
       })),
       audioUrl: backgroundMusicUrl || undefined,
-      audioVolume: backgroundMusicUrl ? audioVolume : undefined,
+      audioVolume: backgroundMusicUrl ? (globalTtsEnabled ? 0.2 : audioVolume) : undefined,
       outputResolution,
       fps,
-      async: true // Request async background processing for real-time tracking
+      async: true, // Request async background processing for real-time tracking
+      tts: globalTtsEnabled,
+      ttsLanguage: globalTtsLanguage === 'Polski' ? 'pl' : 'en',
+      syncDurationWithVoice: globalSyncDuration,
+      captionAnimation: globalCaptionAnimation,
+      highlightColor: globalHighlightColor
     };
 
     try {
@@ -484,15 +558,25 @@ export const MakeHttpConnector: React.FC = () => {
           scenes: scenes.map((s, i) => ({
             videoUrl: `{{1.scene_${i + 1}_videoUrl}}`,
             subtitles: `{{1.scene_${i + 1}_subtitles}}`,
+            voiceover_text: `{{1.scene_${i + 1}_voiceover}}`,
             trimStart: s.trimStart || 0,
-            trimEnd: s.trimEnd || 5,
-            captionStyle: s.captionStyle
+            trimEnd: s.trimEnd || 4,
+            captionStyle: {
+              ...s.captionStyle,
+              animation: s.captionStyle?.animation || globalCaptionAnimation,
+              highlightColor: s.captionStyle?.highlightColor || globalHighlightColor
+            }
           })),
           audioUrl: '{{1.backgroundMusicUrl}}',
-          audioVolume: 0.3,
+          audioVolume: 0.2,
           outputResolution,
           fps,
           async: true,
+          tts: globalTtsEnabled,
+          ttsLanguage: globalTtsLanguage === 'Polski' ? 'pl' : 'en',
+          syncDurationWithVoice: globalSyncDuration,
+          captionAnimation: globalCaptionAnimation,
+          highlightColor: globalHighlightColor,
           webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw'
         },
         null,
@@ -505,10 +589,15 @@ export const MakeHttpConnector: React.FC = () => {
         {
           scenes: '{{1.scenes}}',
           audioUrl: '{{1.audioUrl}}',
-          audioVolume: 0.3,
+          audioVolume: 0.2,
           outputResolution,
           fps,
           async: true,
+          tts: globalTtsEnabled,
+          ttsLanguage: globalTtsLanguage === 'Polski' ? 'pl' : 'en',
+          syncDurationWithVoice: globalSyncDuration,
+          captionAnimation: globalCaptionAnimation,
+          highlightColor: globalHighlightColor,
           webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw'
         },
         null,
@@ -522,15 +611,25 @@ export const MakeHttpConnector: React.FC = () => {
         scenes: scenes.map((s) => ({
           videoUrl: s.videoUrl,
           subtitles: s.subtitles,
+          voiceover_text: s.voiceover_text || s.subtitles,
           trimStart: s.trimStart || 0,
-          trimEnd: s.trimEnd || 5,
-          captionStyle: s.captionStyle
+          trimEnd: s.trimEnd || 4,
+          captionStyle: {
+            ...s.captionStyle,
+            animation: s.captionStyle?.animation || globalCaptionAnimation,
+            highlightColor: s.captionStyle?.highlightColor || globalHighlightColor
+          }
         })),
         audioUrl: backgroundMusicUrl || 'https://domain.com/background-music.mp3',
-        audioVolume: 0.3,
+        audioVolume: 0.2,
         outputResolution,
         fps,
         async: true,
+        tts: globalTtsEnabled,
+        ttsLanguage: globalTtsLanguage === 'Polski' ? 'pl' : 'en',
+        syncDurationWithVoice: globalSyncDuration,
+        captionAnimation: globalCaptionAnimation,
+        highlightColor: globalHighlightColor,
         webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw'
       },
       null,
@@ -864,6 +963,105 @@ export const MakeHttpConnector: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Global Lektor AI & Subtitles Controls */}
+                <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-4">
+                  {/* TTS Row */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-950/60 border border-slate-800 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg border ${globalTtsEnabled ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
+                        <Mic className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white">Lektor Text-to-Speech (TTS)</span>
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-mono">
+                            {globalTtsLanguage}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">Automatyczny dubbing scen audio z wyciszaniem muzyki</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        value={globalTtsLanguage}
+                        onChange={(e) => setGlobalTtsLanguage(e.target.value)}
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white"
+                      >
+                        <option value="Polski">🇵🇱 Polski</option>
+                        <option value="English">🇬🇧 English</option>
+                        <option value="Español">🇪🇸 Español</option>
+                        <option value="Deutsch">🇩🇪 Deutsch</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={handleToggleVoicePreview}
+                        disabled={voicePreviewLoading || !globalTtsEnabled}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-xs font-medium text-slate-200 rounded-lg border border-slate-700 flex items-center gap-1 transition"
+                      >
+                        {voicePreviewLoading ? (
+                          <RefreshCw className="w-3 h-3 animate-spin text-indigo-400" />
+                        ) : voicePreviewPlaying ? (
+                          <Pause className="w-3 h-3 text-rose-400" />
+                        ) : (
+                          <Volume2 className="w-3 h-3 text-indigo-400" />
+                        )}
+                        <span>{voicePreviewPlaying ? 'Stop' : 'Odsłuchaj'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setGlobalTtsEnabled(!globalTtsEnabled)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          globalTtsEnabled ? 'bg-indigo-600' : 'bg-slate-800'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                            globalTtsEnabled ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Animation & Highlight Settings */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                        Domyślny Styl Animacji Napisów
+                      </label>
+                      <select
+                        value={globalCaptionAnimation}
+                        onChange={(e) => setGlobalCaptionAnimation(e.target.value as any)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                      >
+                        <option value="word-by-word">Word-by-Word (Podświetlanie słowo po słowie)</option>
+                        <option value="single-word">Pojedyncze Wyrazy (Duże dynamiczne)</option>
+                        <option value="classic">Klasyczne (Statyczny blok tekstu)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-400 mb-1">
+                        Kolor Wyróżnienia Słowa (Highlight)
+                      </label>
+                      <select
+                        value={globalHighlightColor}
+                        onChange={(e) => setGlobalHighlightColor(e.target.value as any)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+                      >
+                        <option value="yellow">Złoty / Żółty Neon (#FFD700)</option>
+                        <option value="lime">Limonkowy Neon (#00FF66)</option>
+                        <option value="cyan">Błękitny Cyan (#00E5FF)</option>
+                        <option value="red">Koralowy Czerwony (#FF3366)</option>
+                        <option value="white">Czysta Biel (#FFFFFF)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Scene Builder Section */}
@@ -945,6 +1143,24 @@ export const MakeHttpConnector: React.FC = () => {
                           />
                         </div>
 
+                        {/* Optional Voiceover Text for TTS */}
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <Mic className="w-3.5 h-3.5 text-indigo-400" />
+                              Tekst dla Lektora AI (Audio Dubbing)
+                            </span>
+                            <span className="text-[10px] text-slate-500">Puste = czyta napis sceny</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={scene.voiceover_text || ''}
+                            onChange={(e) => updateScene(scene.id, { voiceover_text: e.target.value })}
+                            placeholder={scene.subtitles || 'Wpisz tekst czytany przez lektora...'}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-indigo-200 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
                           <div>
                             <label className="block text-[11px] text-slate-400 mb-1">Pozycja Napisu</label>
@@ -962,16 +1178,15 @@ export const MakeHttpConnector: React.FC = () => {
                           </div>
 
                           <div>
-                            <label className="block text-[11px] text-slate-400 mb-1">Kolor Czcionki</label>
+                            <label className="block text-[11px] text-slate-400 mb-1">Animacja Napisu</label>
                             <select
-                              value={scene.captionStyle.fontColor || 'white'}
-                              onChange={(e) => updateCaptionStyle(scene.id, { fontColor: e.target.value })}
+                              value={scene.captionStyle.animation || globalCaptionAnimation}
+                              onChange={(e) => updateCaptionStyle(scene.id, { animation: e.target.value as any })}
                               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300"
                             >
-                              <option value="yellow">Żółty (#FFEA00)</option>
-                              <option value="white">Biały (#FFFFFF)</option>
-                              <option value="cyan">Błękitny (#00E5FF)</option>
-                              <option value="lime">Limonkowy (#76FF03)</option>
+                              <option value="word-by-word">Word-by-Word</option>
+                              <option value="single-word">Pojedyncze Słowo</option>
+                              <option value="classic">Klasyczne</option>
                             </select>
                           </div>
 

@@ -1,0 +1,2 @@
+file '/app/applet/temp/job_1788811431515_sjsxy4/norm_scene_1.mp4'
+file '/app/applet/temp/job_1788811431515_sjsxy4/norm_scene_2.mp4'

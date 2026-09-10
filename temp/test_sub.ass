@@ -1,0 +1,17 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Hormozi,Montserrat,64,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,40,40,240,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.60,Hormozi,,0,0,0,,{\c&H0022FF&\fscx115\fscy115}CZY{\r\c&H00FFFFFF&} WIESZ ŻE TO PRAWDA
+Dialogue: 0,0:00:00.60,0:00:01.20,Hormozi,,0,0,0,,CZY {\c&H0022FF&\fscx115\fscy115}WIESZ{\r\c&H00FFFFFF&} ŻE TO PRAWDA
+Dialogue: 0,0:00:01.20,0:00:01.80,Hormozi,,0,0,0,,CZY WIESZ {\c&H0022FF&\fscx115\fscy115}ŻE{\r\c&H00FFFFFF&} TO PRAWDA
+Dialogue: 0,0:00:01.80,0:00:02.40,Hormozi,,0,0,0,,CZY WIESZ ŻE {\c&H0022FF&\fscx115\fscy115}TO{\r\c&H00FFFFFF&} PRAWDA
+Dialogue: 0,0:00:02.40,0:00:03.00,Hormozi,,0,0,0,,CZY WIESZ ŻE TO {\c&H0000FFFF&\fscx115\fscy115}PRAWDA{\r\c&H00FFFFFF&}

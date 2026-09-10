@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Sparkles,
   Zap,
   Play,
+  Pause,
   Film,
   CheckCircle2,
   AlertCircle,
@@ -20,7 +21,11 @@ import {
   Sliders,
   Radio,
   Eye,
-  ArrowRight
+  ArrowRight,
+  Volume2,
+  VolumeX,
+  Mic,
+  Type
 } from 'lucide-react';
 import { Scene, JobStatusResponse, CaptionStyle } from '../types';
 
@@ -102,6 +107,75 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
   const [copiedPayload, setCopiedPayload] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
+  // Lektor Text-to-Speech (TTS) State
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [syncDurationWithVoice, setSyncDurationWithVoice] = useState(true);
+  const [voicePreviewLoading, setVoicePreviewLoading] = useState(false);
+  const [voicePreviewPlaying, setVoicePreviewPlaying] = useState(false);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+
+  // Animated Subtitles (Word-by-Word Hormozi / MrBeast style) State
+  const [captionAnimation, setCaptionAnimation] = useState<'word-by-word' | 'single-word' | 'classic'>('word-by-word');
+  const [highlightColor, setHighlightColor] = useState<'yellow' | 'lime' | 'cyan' | 'red' | 'white'>('yellow');
+  const [captionPosition, setCaptionPosition] = useState<'bottom' | 'center' | 'top'>('bottom');
+
+  // Interactive Live Animation Preview State
+  const [previewWordIndex, setPreviewWordIndex] = useState(0);
+  const previewWords = ['CZY', 'WIESZ,', 'ŻE', 'TEN', 'FORMAT', 'ZDOBYWA', 'MILIONY', 'WYŚWIETLEŃ?'];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPreviewWordIndex((prev) => (prev + 1) % previewWords.length);
+    }, 420);
+    return () => clearInterval(timer);
+  }, [previewWords.length]);
+
+  // Voice Preview Playback Handler
+  const handleToggleVoicePreview = async () => {
+    if (voicePreviewPlaying && audioPreviewRef.current) {
+      audioPreviewRef.current.pause();
+      setVoicePreviewPlaying(false);
+      return;
+    }
+
+    setVoicePreviewLoading(true);
+    try {
+      const sampleText = targetLanguage === 'Polski'
+        ? 'Cześć! To jest podgląd głosu lektora dla Twoich filmów.'
+        : 'Hello! This is a preview of the AI voiceover for your viral shorts.';
+
+      const res = await fetch('/api/tts/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: sampleText,
+          language: targetLanguage
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Błąd generowania próbki głosu');
+
+      if (audioPreviewRef.current) {
+        audioPreviewRef.current.pause();
+      }
+
+      const audio = new Audio(data.audioUrl || data.streamUrl);
+      audioPreviewRef.current = audio;
+      audio.onplay = () => setVoicePreviewPlaying(true);
+      audio.onended = () => setVoicePreviewPlaying(false);
+      audio.onerror = () => {
+        setVoicePreviewPlaying(false);
+        onToast?.('error', 'Błąd odtwarzacza', 'Nie można odtworzyć próbki lektora.');
+      };
+      await audio.play();
+    } catch (err) {
+      onToast?.('error', 'Błąd próbki audio', (err as Error).message);
+    } finally {
+      setVoicePreviewLoading(false);
+    }
+  };
+
   // Auto-Pilot Full Execution
   const handleAutoPilotRun = async () => {
     if (activeMode === 'create' && !topic.trim()) return;
@@ -133,12 +207,27 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            scenes: transData.scenes,
+            scenes: (transData.scenes || []).map((sc: any) => ({
+              ...sc,
+              captionStyle: {
+                position: captionPosition,
+                animation: captionAnimation,
+                highlightColor,
+                fontSize: 54,
+                outlineWidth: 6,
+                fontColor: 'white'
+              }
+            })),
             backgroundMusicUrl: transData.backgroundMusicUrl,
-            audioVolume: 0.3,
+            audioVolume: ttsEnabled ? 0.2 : 0.3,
             outputResolution: resolution,
             fps: 30,
-            async: true
+            async: true,
+            tts: ttsEnabled,
+            ttsLanguage: targetLanguage,
+            syncDurationWithVoice,
+            captionAnimation,
+            highlightColor
           })
         });
 
@@ -147,7 +236,7 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
 
         setActiveJobId(combineData.jobId);
         onJobStarted(combineData.jobId);
-        onToast?.('success', 'Auto-Pilot uruchomiony!', `Rozpoczęto renderowanie przetłumaczonego filmu (ID: ${combineData.jobId})`);
+        onToast?.('success', 'Auto-Pilot uruchomiony!', `Rozpoczęto renderowanie przetłumaczonego filmu z lektorem i napisami (ID: ${combineData.jobId})`);
 
         const eventSource = new EventSource(`/api/jobs/${combineData.jobId}/stream`);
         eventSource.onmessage = (evt) => {
@@ -173,7 +262,12 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
             niche,
             language: targetLanguage,
             outputResolution: resolution,
-            async: true
+            async: true,
+            tts: ttsEnabled,
+            ttsLanguage: targetLanguage,
+            syncDurationWithVoice,
+            captionAnimation,
+            highlightColor
           })
         });
 
@@ -185,7 +279,7 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
         setGeneratedScript(data.script);
         setActiveJobId(data.jobId);
         onJobStarted(data.jobId);
-        onToast?.('success', 'Auto-Pilot uruchomiony!', `Stworzono scenariusz i rozpoczęto renderowanie (ID: ${data.jobId})`);
+        onToast?.('success', 'Auto-Pilot uruchomiony!', `Stworzono scenariusz i rozpoczęto renderowanie z lektorem (ID: ${data.jobId})`);
 
         const eventSource = new EventSource(`/api/jobs/${data.jobId}/stream`);
         eventSource.onmessage = (evt) => {
@@ -256,20 +350,23 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
         id: `gen-scene-${Date.now()}-${i}`,
         videoUrl: s.videoUrl,
         subtitles: s.subtitles,
+        voiceover_text: s.voiceover_text || s.subtitles,
         trimStart: 0,
         trimEnd: s.duration || 4,
-        captionStyle: s.captionStyle || {
-          fontSize: 42,
-          fontColor: i === 0 ? 'yellow' : 'white',
+        captionStyle: {
+          fontSize: 54,
+          fontColor: 'white',
           outlineColor: 'black',
-          outlineWidth: 3,
+          outlineWidth: 6,
           boxColor: 'black@0.6',
-          position: 'bottom'
+          position: captionPosition,
+          animation: captionAnimation,
+          highlightColor: highlightColor
         }
       }));
 
       onLoadScriptToEditor(appScenes, data.backgroundMusicUrl);
-      onToast?.('success', 'Scenariusz AI wygenerowany!', 'Nowo utworzone sceny zostały załadowane do edytora.');
+      onToast?.('success', 'Scenariusz AI wygenerowany!', 'Nowo utworzone sceny z lektorem i animowanymi napisami zostały załadowane do edytora.');
     } catch (err) {
       const msg = (err as Error).message || 'Wystąpił błąd podczas generowania scenariusza';
       setError(msg);
@@ -283,7 +380,12 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
     {
       topic: '{{1.topic}}',
       niche: '{{1.niche}}',
-      outputResolution: '720x1280',
+      tts: ttsEnabled,
+      ttsLanguage: targetLanguage === 'Polski' ? 'pl' : 'en',
+      captionAnimation: captionAnimation,
+      highlightColor: highlightColor,
+      syncDurationWithVoice: syncDurationWithVoice,
+      outputResolution: resolution,
       async: true,
       webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw'
     },
@@ -474,6 +576,241 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
                 <option value="1280x720">Poziome 720p (16:9 HD)</option>
                 <option value="720x720">Kwadrat 720p (1:1)</option>
               </select>
+            </div>
+          </div>
+
+          {/* Advanced Features: Lektor AI & Animated Subtitles Panel */}
+          <div className="space-y-4 pt-2 border-t border-slate-800">
+            {/* Lektor Text-to-Speech Block */}
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl border transition ${ttsEnabled ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
+                    <Mic className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-white">Lektor Text-to-Speech (Synteza Mowy AI)</span>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-semibold border border-indigo-400/30 uppercase">
+                        {targetLanguage}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Automatyczne czytanie tekstu każdej sceny przez naturalnego lektora w wybranym języku.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleToggleVoicePreview}
+                    disabled={voicePreviewLoading || !ttsEnabled}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-xs font-semibold text-slate-200 rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+                    title="Odsłuchaj próbkę głosu"
+                  >
+                    {voicePreviewLoading ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                    ) : voicePreviewPlaying ? (
+                      <Pause className="w-3.5 h-3.5 text-rose-400" />
+                    ) : (
+                      <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                    )}
+                    <span>{voicePreviewPlaying ? 'Zatrzymaj próbkę' : 'Odsłuchaj lektora'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTtsEnabled(!ttsEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                      ttsEnabled ? 'bg-indigo-600' : 'bg-slate-800'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        ttsEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {ttsEnabled && (
+                <div className="pt-3 border-t border-slate-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={syncDurationWithVoice}
+                      onChange={(e) => setSyncDurationWithVoice(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                    />
+                    <span>Automatycznie wydłuż scenę wideo do tempa wypowiedzi lektora (Smart Audio Sync)</span>
+                  </label>
+                  <span className="text-[11px] text-slate-400 font-mono">Ducking muzyki w tle: -70%</span>
+                </div>
+              )}
+            </div>
+
+            {/* Animowane Napisy Word-by-Word Block */}
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-yellow-300">
+                    <Type className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-white">Animowane Napisy Word-by-Word</span>
+                      <span className="px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 text-[10px] font-semibold border border-yellow-400/30">
+                        Hormozi / TikTok Style
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Wypalane przez silnik libass z czcionką Montserrat-Bold i dynamicznym podświetlaniem wyraz po wyrazie.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Style & Color Selector Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                {/* Style Mode */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Animacja Tekstu:</label>
+                  <div className="grid grid-cols-3 gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setCaptionAnimation('word-by-word')}
+                      className={`py-1.5 px-2 rounded-lg font-medium transition text-center ${
+                        captionAnimation === 'word-by-word' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Word-by-Word
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCaptionAnimation('single-word')}
+                      className={`py-1.5 px-2 rounded-lg font-medium transition text-center ${
+                        captionAnimation === 'single-word' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Pojedyncze
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCaptionAnimation('classic')}
+                      className={`py-1.5 px-2 rounded-lg font-medium transition text-center ${
+                        captionAnimation === 'classic' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Klasyczne
+                    </button>
+                  </div>
+                </div>
+
+                {/* Highlight Color Palette */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Kolor Wyróżnienia:</label>
+                  <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-slate-800">
+                    {[
+                      { id: 'yellow', name: 'Złoty Neon', hex: '#FFD700', border: 'border-yellow-400' },
+                      { id: 'lime', name: 'Zieleń Neon', hex: '#00FF66', border: 'border-emerald-400' },
+                      { id: 'cyan', name: 'Cyan Błękit', hex: '#00E5FF', border: 'border-cyan-400' },
+                      { id: 'red', name: 'Koral Czerwień', hex: '#FF3366', border: 'border-rose-400' },
+                      { id: 'white', name: 'Czysta Biel', hex: '#FFFFFF', border: 'border-white' }
+                    ].map((col) => (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={() => setHighlightColor(col.id as any)}
+                        title={col.name}
+                        className={`w-7 h-7 rounded-lg transition-transform flex items-center justify-center ${
+                          highlightColor === col.id ? 'scale-110 ring-2 ring-indigo-400 ring-offset-2 ring-offset-slate-950' : 'opacity-80 hover:opacity-100'
+                        }`}
+                        style={{ backgroundColor: col.hex }}
+                      >
+                        {highlightColor === col.id && (
+                          <Check className="w-4 h-4 text-black stroke-[3]" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Position */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">Pozycja na Ekranie:</label>
+                  <select
+                    value={captionPosition}
+                    onChange={(e) => setCaptionPosition(e.target.value as any)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="bottom">Dolna (Optymalna dla Shorts 9:16)</option>
+                    <option value="center">Środek (Maksymalna Uwaga Widza)</option>
+                    <option value="top">Górna (Dla specyficznych kadrów)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Live Interactive Word-by-Word Preview Widget */}
+              <div className="mt-3 bg-gradient-to-br from-slate-900 via-black to-slate-950 border border-slate-800 rounded-xl p-4 overflow-hidden relative shadow-inner">
+                <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono mb-2">
+                  <span className="flex items-center gap-1.5 text-yellow-400">
+                    <Sparkles className="w-3.5 h-3.5" /> Podgląd efektu na żywo (Montserrat-Bold + libass):
+                  </span>
+                  <span className="uppercase text-[10px] bg-slate-800 px-2 py-0.5 rounded text-slate-300">
+                    Styl: {captionAnimation}
+                  </span>
+                </div>
+
+                <div className="py-4 px-2 min-h-[64px] flex items-center justify-center text-center">
+                  {captionAnimation === 'single-word' ? (
+                    <motion.div
+                      key={previewWordIndex}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1.15, opacity: 1 }}
+                      transition={{ duration: 0.15 }}
+                      className="font-extrabold text-2xl tracking-wider uppercase px-4 py-1.5 rounded-lg bg-black/80 border-2"
+                      style={{
+                        color: highlightColor === 'yellow' ? '#FFD700' : highlightColor === 'lime' ? '#00FF66' : highlightColor === 'cyan' ? '#00E5FF' : highlightColor === 'red' ? '#FF3366' : '#FFFFFF',
+                        borderColor: highlightColor === 'yellow' ? '#FFD700' : highlightColor === 'lime' ? '#00FF66' : highlightColor === 'cyan' ? '#00E5FF' : highlightColor === 'red' ? '#FF3366' : '#FFFFFF',
+                        textShadow: '0 2px 8px rgba(0,0,0,0.9)'
+                      }}
+                    >
+                      {previewWords[previewWordIndex]}
+                    </motion.div>
+                  ) : captionAnimation === 'word-by-word' ? (
+                    <div className="flex flex-wrap items-center justify-center gap-2 font-extrabold text-base tracking-wide uppercase">
+                      {previewWords.map((w, idx) => {
+                        const isCurrent = idx === previewWordIndex;
+                        return (
+                          <span
+                            key={idx}
+                            className={`transition-all duration-150 rounded px-1.5 py-0.5 ${
+                              isCurrent
+                                ? 'scale-110 shadow-lg font-black'
+                                : 'text-slate-200 opacity-80'
+                            }`}
+                            style={{
+                              color: isCurrent
+                                ? highlightColor === 'yellow' ? '#FFD700' : highlightColor === 'lime' ? '#00FF66' : highlightColor === 'cyan' ? '#00E5FF' : highlightColor === 'red' ? '#FF3366' : '#FFFFFF'
+                                : '#FFFFFF',
+                              backgroundColor: isCurrent ? 'rgba(0, 0, 0, 0.75)' : 'transparent',
+                              textShadow: isCurrent ? '0 0 10px rgba(0,0,0,0.8)' : '0 1px 3px rgba(0,0,0,0.9)'
+                            }}
+                          >
+                            {w}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="font-extrabold text-lg text-white bg-black/70 px-4 py-1.5 rounded-lg tracking-wide uppercase border border-slate-700">
+                      CZY WIESZ, ŻE TEN FORMAT ZDOBYWA MILIONY WYŚWIETLEŃ?
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

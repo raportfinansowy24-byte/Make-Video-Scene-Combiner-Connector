@@ -6,6 +6,8 @@ export interface CaptionStyle {
   boxColor?: string;
   position?: 'bottom' | 'center' | 'top';
   alignment?: 'center' | 'left' | 'right';
+  animation?: 'word-by-word' | 'single-word' | 'karaoke' | 'classic';
+  highlightColor?: 'yellow' | 'green' | 'lime' | 'cyan' | 'red' | 'white';
 }
 
 export interface Scene {
@@ -14,6 +16,8 @@ export interface Scene {
   imageUrl?: string;
   duration?: number;
   subtitles: string;
+  voiceoverText?: string;
+  voiceover_text?: string;
   captionStyle: CaptionStyle;
   trimStart?: number;
   trimEnd?: number;
@@ -25,6 +29,8 @@ export interface CombinePayload {
     imageUrl?: string;
     duration?: number;
     subtitles?: string;
+    voiceover_text?: string;
+    voiceoverText?: string;
     captionStyle?: CaptionStyle;
     trimStart?: number;
     trimEnd?: number;
@@ -36,6 +42,12 @@ export interface CombinePayload {
   fps?: number;
   async?: boolean;
   webhookUrl?: string;
+  tts?: boolean;
+  ttsLanguage?: string;
+  ttsSpeed?: number;
+  syncDurationWithVoice?: boolean;
+  captionAnimation?: 'word-by-word' | 'single-word' | 'karaoke' | 'classic';
+  highlightColor?: 'yellow' | 'green' | 'lime' | 'cyan' | 'red' | 'white';
 }
 
 export interface SystemHealth {

@@ -409,6 +409,8 @@ interface CaptionStyle {
   position?: 'bottom' | 'center' | 'top';
   alignment?: 'center' | 'left' | 'right';
   fontPath?: string;
+  animation?: 'word-by-word' | 'single-word' | 'karaoke' | 'classic';
+  highlightColor?: 'yellow' | 'green' | 'cyan' | 'red' | 'white';
 }
 
 interface SceneInput {
@@ -435,6 +437,236 @@ interface CombineScenesPayload {
   fps?: number;
   async?: boolean;
   webhookUrl?: string;
+  tts?: boolean;
+  ttsLanguage?: string;
+  ttsSpeed?: number;
+  syncDurationWithVoice?: boolean;
+  captionAnimation?: 'word-by-word' | 'single-word' | 'karaoke' | 'classic';
+  highlightColor?: 'yellow' | 'green' | 'cyan' | 'red' | 'white';
+}
+
+// Language normalizer for Google TTS
+function normalizeLanguageCode(lang?: string): string {
+  if (!lang) return 'pl';
+  const l = lang.trim().toLowerCase();
+  if (l.startsWith('pl') || l.includes('pol')) return 'pl';
+  if (l.startsWith('en') || l.includes('ang') || l.includes('eng')) return 'en';
+  if (l.startsWith('es') || l.includes('hiszp') || l.includes('span')) return 'es';
+  if (l.startsWith('de') || l.includes('niem') || l.includes('ger')) return 'de';
+  if (l.startsWith('fr') || l.includes('franc') || l.includes('fren')) return 'fr';
+  if (l.startsWith('it') || l.includes('włos') || l.includes('ital')) return 'it';
+  if (l.startsWith('uk') || l.startsWith('ua') || l.includes('ukr')) return 'uk';
+  return l.slice(0, 2);
+}
+
+// Split long text into natural chunks for TTS synthesis
+function splitIntoTtsChunks(text: string, maxLen: number = 160): string[] {
+  const clean = text.replace(/[\r\n]+/g, ' ').trim();
+  if (!clean) return [];
+  const words = clean.split(/\s+/);
+  const chunks: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    if ((cur + ' ' + w).trim().length > maxLen) {
+      if (cur) chunks.push(cur.trim());
+      cur = w;
+    } else {
+      cur = (cur + ' ' + w).trim();
+    }
+  }
+  if (cur) chunks.push(cur.trim());
+  return chunks.length > 0 ? chunks : [clean];
+}
+
+// Download single TTS audio chunk
+function downloadTtsChunk(text: string, lang: string, destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const encoded = encodeURIComponent(text);
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encoded}&tl=${lang}&client=tw-ob`;
+    const file = fs.createWriteStream(destPath);
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (res) => {
+      if (res.statusCode !== 200) {
+        file.close();
+        if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+        return reject(new Error(`Google TTS returned HTTP ${res.statusCode}`));
+      }
+      res.pipe(file);
+      file.on('finish', () => {
+        file.close(() => resolve());
+      });
+    }).on('error', (err) => {
+      file.close();
+      if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+      reject(err);
+    });
+  });
+}
+
+// Measure audio duration using ffprobe
+function getAudioDuration(filePath: string): Promise<number> {
+  return new Promise((resolve) => {
+    exec(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
+      (err, stdout) => {
+        if (err) return resolve(0);
+        const dur = parseFloat(stdout.trim());
+        resolve(isNaN(dur) ? 0 : dur);
+      }
+    );
+  });
+}
+
+// High quality TTS Generator supporting arbitrary sentence length
+async function generateTtsAudio(
+  text: string,
+  lang: string,
+  destPath: string,
+  tempDir: string
+): Promise<number> {
+  const cleanLang = normalizeLanguageCode(lang);
+  const chunks = splitIntoTtsChunks(text);
+  if (chunks.length === 0) return 0;
+
+  if (chunks.length === 1) {
+    await downloadTtsChunk(chunks[0], cleanLang, destPath);
+    return getAudioDuration(destPath);
+  }
+
+  // Multi-chunk download and stitch with ffmpeg concat
+  const chunkFiles: string[] = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunkFile = path.resolve(tempDir, `tts_chunk_${Date.now()}_${i}.mp3`);
+    await downloadTtsChunk(chunks[i], cleanLang, chunkFile);
+    chunkFiles.push(chunkFile);
+  }
+
+  const listFile = path.resolve(tempDir, `tts_concat_${Date.now()}.txt`);
+  fs.writeFileSync(listFile, chunkFiles.map((f) => `file '${f.replace(/\\/g, '/')}'`).join('\n'));
+
+  await new Promise<void>((resolve, reject) => {
+    exec(`ffmpeg -y -f concat -safe 0 -i "${listFile}" -c copy "${destPath}"`, (err, _stdout, stderr) => {
+      // Clean up chunk files
+      try {
+        if (fs.existsSync(listFile)) fs.unlinkSync(listFile);
+        chunkFiles.forEach((f) => { if (fs.existsSync(f)) fs.unlinkSync(f); });
+      } catch {}
+
+      if (err) return reject(new Error(stderr || err.message));
+      resolve();
+    });
+  });
+
+  return getAudioDuration(destPath);
+}
+
+// Convert seconds to ASS time format (h:mm:ss.cc)
+function formatAssTime(seconds: number): string {
+  const safeSec = Math.max(0, seconds);
+  const hrs = Math.floor(safeSec / 3600);
+  const mins = Math.floor((safeSec % 3600) / 60);
+  const secs = Math.floor(safeSec % 60);
+  const centis = Math.floor((safeSec % 1) * 100);
+  return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(centis).padStart(2, '0')}`;
+}
+
+// Word-by-Word Animated Subtitle Generator (Advanced SubStation Alpha .ass format)
+// Produces signature Hormozi / MrBeast / TikTok viral karaoke captions
+function generateWordByWordAss(
+  text: string,
+  duration: number,
+  options: {
+    animation?: 'word-by-word' | 'single-word' | 'karaoke' | 'classic';
+    highlightColor?: 'yellow' | 'green' | 'cyan' | 'red' | 'white';
+    position?: 'bottom' | 'center' | 'top';
+    fontSize?: number;
+    outlineWidth?: number;
+  } = {}
+): string {
+  const words = text.trim().replace(/[\r\n]+/g, ' ').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '';
+
+  const safeDuration = Math.max(duration, 1.0);
+  const highlightColor =
+    options.highlightColor === 'green' ? '&H0022C55E&' :
+    options.highlightColor === 'cyan' ? '&H00FFFF00&' :
+    options.highlightColor === 'red' ? '&H002222FF&' :
+    options.highlightColor === 'white' ? '&H00FFFFFF&' :
+    '&H0000E6FF&'; // Default signature electric gold/yellow
+
+  const mode = options.animation || 'word-by-word';
+  const position = options.position || 'bottom';
+  const alignment = position === 'center' ? 5 : position === 'top' ? 8 : 2;
+  const marginV = position === 'center' ? 0 : position === 'top' ? 160 : 220;
+  const fontSize = options.fontSize || 54;
+  const outlineWidth = options.outlineWidth || 6;
+
+  let totalChars = 0;
+  words.forEach((w) => { totalChars += Math.max(w.length, 2); });
+
+  const wordTimings: { word: string; start: number; end: number }[] = [];
+  let currentTime = 0;
+  words.forEach((w, i) => {
+    const wordDur = (Math.max(w.length, 2) / totalChars) * safeDuration;
+    const start = currentTime;
+    const end = i === words.length - 1 ? safeDuration : currentTime + wordDur;
+    currentTime += wordDur;
+    wordTimings.push({ word: w, start, end });
+  });
+
+  let dialogues = '';
+
+  if (mode === 'single-word') {
+    // Punchy 1-word pop-up (MrBeast style)
+    wordTimings.forEach(({ word, start, end }) => {
+      const s = formatAssTime(start);
+      const e = formatAssTime(end);
+      dialogues += `Dialogue: 0,${s},${e},HormoziStyle,,0,0,0,,{\\c${highlightColor}\\fscx124\\fscy124\\b1}${word.toUpperCase()}\\N\n`;
+    });
+  } else if (mode === 'classic') {
+    // Static clean subtitle across duration
+    const s = formatAssTime(0);
+    const e = formatAssTime(safeDuration);
+    dialogues += `Dialogue: 0,${s},${e},HormoziStyle,,0,0,0,,{\\c&H00FFFFFF&\\b1}${words.join(' ').toUpperCase()}\\N\n`;
+  } else {
+    // Default: 'word-by-word' active word enlargement and vibrant highlight (Hormozi style)
+    const chunkSize = 4;
+    for (let c = 0; c < words.length; c += chunkSize) {
+      const chunkWords = words.slice(c, c + chunkSize);
+      const chunkIndices = chunkWords.map((_, idx) => c + idx);
+
+      chunkIndices.forEach((activeIdx) => {
+        const timing = wordTimings[activeIdx];
+        const s = formatAssTime(timing.start);
+        const e = formatAssTime(timing.end);
+
+        const lineFormatted = chunkWords
+          .map((w, idx) => {
+            const globalIdx = c + idx;
+            if (globalIdx === activeIdx) {
+              return `{\\c${highlightColor}\\fscx118\\fscy118\\b1}${w.toUpperCase()}{\\r\\c&H00FFFFFF&\\b1}`;
+            }
+            return `{\\c&H00FFFFFF&\\b1}${w.toUpperCase()}`;
+          })
+          .join(' ');
+
+        dialogues += `Dialogue: 0,${s},${e},HormoziStyle,,0,0,0,,${lineFormatted}\\N\n`;
+      });
+    }
+  }
+
+  return `[Script Info]
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: HormoziStyle,Montserrat,${fontSize},&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,${outlineWidth},2,${alignment},24,24,${marginV},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${dialogues}`;
 }
 
 // Escape string for FFmpeg drawtext filter
@@ -577,6 +809,10 @@ async function processCombineScenesJob(jobId: string, payload: CombineScenesPayl
 
     const processedScenePaths: string[] = [];
     let totalEstimatedDuration = 0;
+    const ttsEnabled = payload.tts !== false;
+    const ttsLanguage = normalizeLanguageCode(payload.ttsLanguage || (payload as any).language || 'pl');
+    const defaultCaptionAnim = payload.captionAnimation || 'word-by-word';
+    const defaultHighlightCol = payload.highlightColor || 'yellow';
 
     // Process each scene
     for (let index = 0; index < scenes.length; index++) {
@@ -588,10 +824,10 @@ async function processCombineScenesJob(jobId: string, payload: CombineScenesPayl
       updateJobProgress(
         jobId,
         {
-          step: `Przetwarzanie Sceny ${sceneNum}/${scenes.length} (Montserrat font & scaling)`,
+          step: `Przetwarzanie Sceny ${sceneNum}/${scenes.length} (Lektor TTS + animowane napisy)`,
           progress: sceneStartProgress
         },
-        `Pobieranie i nakładanie napisów dla sceny ${sceneNum}...`
+        `Przygotowywanie lektora TTS i napisów word-by-word dla sceny ${sceneNum}...`
       );
 
       const rawAssetUrl = (scene as any).video_url || scene.videoUrl || (scene as any).url || scene.imageUrl;
@@ -608,63 +844,123 @@ async function processCombineScenesJob(jobId: string, payload: CombineScenesPayl
       await downloadFile(rawAssetUrl, downloadedAssetPath, jobId);
       updateJobProgress(jobId, {}, `Zapisano plik źródłowy: raw_scene_${sceneNum}.${isImage ? 'jpg' : 'mp4'}`);
 
-      // Render & Normalize Scene with FFmpeg
-      const normalizedScenePath = path.join(jobTempDir, `norm_scene_${sceneNum}.mp4`);
-      const subtitleText = scene.subtitles || scene.caption || scene.text || '';
+      // Extract speech text for TTS and captions
+      const speechText = (
+        scene.voiceover_text ||
+        scene.subtitles ||
+        scene.caption ||
+        scene.text ||
+        (scene as any).tekst_głosowy ||
+        (scene as any).voiceover ||
+        ''
+      ).trim();
 
-      // Caption styles
-      const capStyle = scene.captionStyle || {};
-      const fontSize = capStyle.fontSize || (targetWidth > 1200 ? 44 : 36);
-      const fontColor = capStyle.fontColor || 'white';
-      const outlineColor = capStyle.outlineColor || 'black';
-      const outlineWidth = capStyle.outlineWidth ?? 3;
-      const boxColor = capStyle.boxColor || 'black@0.5';
-      const position = capStyle.position || 'bottom';
-
-      // Y position logic for drawtext
-      let yCoord = `h-th-${Math.round(targetHeight * 0.12)}`;
-      if (position === 'center') {
-        yCoord = `(h-th)/2`;
-      } else if (position === 'top') {
-        yCoord = `${Math.round(targetHeight * 0.12)}`;
-      }
-
-      let drawtextFilter = '';
-      if (subtitleText.trim()) {
-        const escapedText = escapeDrawText(subtitleText.trim().toUpperCase());
-        const fontFileOption = fs.existsSync(MONTSERRAT_FONT_PATH)
-          ? `:fontfile='${MONTSERRAT_FONT_PATH.replace(/\\/g, '/')}'`
-          : '';
-
-        drawtextFilter = `,drawtext=text='${escapedText}'${fontFileOption}:fontsize=${fontSize}:fontcolor=${fontColor}:borderw=${outlineWidth}:bordercolor=${outlineColor}:x=(w-text_w)/2:y=${yCoord}:box=1:boxcolor=${boxColor}:boxborderw=10`;
-      }
-
-      const scaleFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-ih)/2:(oh-ih)/2:black,setsar=1,fps=${targetFps}`;
-      const totalFilter = `${scaleFilter}${drawtextFilter}`;
-
-      let sceneDuration = scene.duration || scene.scene_duration || 6;
+      // Initial Scene duration
+      let sceneDuration = scene.duration || scene.scene_duration || 5;
       if (typeof scene.trimStart === 'number' && typeof scene.trimEnd === 'number' && scene.trimEnd > scene.trimStart) {
         sceneDuration = scene.trimEnd - scene.trimStart;
       }
+
+      // 1. Text-to-Speech Generation
+      let hasTtsAudio = false;
+      const sceneTtsPath = path.join(jobTempDir, `scene_tts_${sceneNum}.mp3`);
+
+      if (ttsEnabled && speechText.length > 0) {
+        try {
+          updateJobProgress(
+            jobId,
+            {},
+            `Generowanie głosu lektora TTS (${ttsLanguage.toUpperCase()}): "${speechText.slice(0, 45)}..."`
+          );
+          const ttsDuration = await generateTtsAudio(speechText, ttsLanguage, sceneTtsPath, jobTempDir);
+          if (ttsDuration > 0 && fs.existsSync(sceneTtsPath)) {
+            hasTtsAudio = true;
+            // Synchronize scene duration with voice narration length (+0.35s natural trailing pause)
+            if (payload.syncDurationWithVoice !== false) {
+              const syncedDuration = Math.round((ttsDuration + 0.35) * 10) / 10;
+              sceneDuration = Math.max(syncedDuration, sceneDuration);
+              console.log(`✓ Scene ${sceneNum} synchronized with TTS voice duration: ${sceneDuration}s (TTS: ${ttsDuration}s)`);
+            }
+          }
+        } catch (ttsErr) {
+          console.warn(`⚠️ TTS warning for scene ${sceneNum}:`, (ttsErr as Error).message);
+          updateJobProgress(jobId, {}, `Lektor TTS dla sceny ${sceneNum} niedostępny, używanie domyślnego audio.`);
+        }
+      }
+
       totalEstimatedDuration += sceneDuration;
 
+      // 2. Word-by-Word Animated Subtitles (ASS Format)
+      const capStyle = scene.captionStyle || {};
+      const animMode = capStyle.animation || defaultCaptionAnim;
+      const highlightCol = capStyle.highlightColor || defaultHighlightCol;
+      const position = capStyle.position || 'bottom';
+      const fontSize = capStyle.fontSize || (targetWidth > 1000 ? 54 : 44);
+      const outlineWidth = capStyle.outlineWidth ?? 6;
+
+      let assSubtitleFilter = '';
+      const sceneAssPath = path.join(jobTempDir, `scene_sub_${sceneNum}.ass`);
+
+      if (speechText.length > 0) {
+        try {
+          const assContent = generateWordByWordAss(speechText, sceneDuration, {
+            animation: animMode,
+            highlightColor: highlightCol,
+            position,
+            fontSize,
+            outlineWidth
+          });
+          fs.writeFileSync(sceneAssPath, assContent, 'utf8');
+          // Escape single quotes and backslashes for FFmpeg filter
+          const cleanAssPath = sceneAssPath.replace(/\\/g, '/').replace(/'/g, "'\\\\''");
+          const cleanFontsDir = FONTS_DIR.replace(/\\/g, '/').replace(/'/g, "'\\\\''");
+          assSubtitleFilter = `,ass='${cleanAssPath}':fontsdir='${cleanFontsDir}'`;
+        } catch (assErr) {
+          console.warn(`⚠️ ASS subtitle error for scene ${sceneNum}:`, assErr);
+        }
+      }
+
+      // Render & Normalize Scene with FFmpeg
+      const normalizedScenePath = path.join(jobTempDir, `norm_scene_${sceneNum}.mp4`);
+      const scaleFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-ih)/2:(oh-ih)/2:black,setsar=1,fps=${targetFps}`;
+      const videoFilterWithAss = `${scaleFilter}${assSubtitleFilter}`;
+
       let ffmpegArgs: string[] = [];
+
       if (isImage) {
-        ffmpegArgs = [
-          '-y',
-          '-loop', '1',
-          '-i', downloadedAssetPath,
-          '-f', 'lavfi',
-          '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-          '-vf', totalFilter,
-          '-t', sceneDuration.toString(),
-          '-c:v', 'libx264',
-          '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac',
-          '-movflags', '+faststart',
-          '-shortest',
-          normalizedScenePath
-        ];
+        if (hasTtsAudio) {
+          ffmpegArgs = [
+            '-y',
+            '-loop', '1',
+            '-i', downloadedAssetPath,
+            '-i', sceneTtsPath,
+            '-vf', videoFilterWithAss,
+            '-t', sceneDuration.toString(),
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-movflags', '+faststart',
+            '-shortest',
+            normalizedScenePath
+          ];
+        } else {
+          ffmpegArgs = [
+            '-y',
+            '-loop', '1',
+            '-i', downloadedAssetPath,
+            '-f', 'lavfi',
+            '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+            '-vf', videoFilterWithAss,
+            '-t', sceneDuration.toString(),
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-movflags', '+faststart',
+            '-shortest',
+            normalizedScenePath
+          ];
+        }
       } else {
         let trimOpts: string[] = [];
         if (typeof scene.trimStart === 'number' && scene.trimStart >= 0) {
@@ -676,32 +972,57 @@ async function processCombineScenesJob(jobId: string, payload: CombineScenesPayl
           trimOpts.push('-t', sceneDuration.toString());
         }
 
-        ffmpegArgs = [
-          '-y',
-          ...trimOpts,
-          '-i', downloadedAssetPath,
-          '-filter_complex', `[0:v]${totalFilter}[v];[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a]`,
-          '-map', '[v]',
-          '-map', '[a]',
-          '-c:v', 'libx264',
-          '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac',
-          '-movflags', '+faststart',
-          '-shortest',
-          normalizedScenePath
-        ];
+        if (hasTtsAudio) {
+          // Use synthesized TTS voice narration as audio track
+          ffmpegArgs = [
+            '-y',
+            ...trimOpts,
+            '-i', downloadedAssetPath,
+            '-i', sceneTtsPath,
+            '-filter_complex', `[0:v]${videoFilterWithAss}[v];[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a]`,
+            '-map', '[v]',
+            '-map', '[a]',
+            '-t', sceneDuration.toString(),
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-movflags', '+faststart',
+            '-shortest',
+            normalizedScenePath
+          ];
+        } else {
+          // Use original video audio
+          ffmpegArgs = [
+            '-y',
+            ...trimOpts,
+            '-i', downloadedAssetPath,
+            '-filter_complex', `[0:v]${videoFilterWithAss}[v];[0:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a]`,
+            '-map', '[v]',
+            '-map', '[a]',
+            '-t', sceneDuration.toString(),
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-movflags', '+faststart',
+            '-shortest',
+            normalizedScenePath
+          ];
+        }
       }
 
       updateJobProgress(
         jobId,
-        { step: `Renderowanie Sceny ${sceneNum}/${scenes.length} w rozdzielczości ${resolutionStr}` },
-        `FFmpeg nakłada filtr czcionki i skaluje scenę ${sceneNum}...`
+        { step: `Renderowanie Sceny ${sceneNum}/${scenes.length} (${animMode})` },
+        `FFmpeg nakłada napisy ${animMode} (${highlightCol}) i synchronizuje audio lektora...`
       );
 
       try {
         await runFfmpegWithProgress(ffmpegArgs, jobId, sceneStartProgress, sceneEndProgress, sceneDuration);
       } catch (err) {
-        updateJobProgress(jobId, {}, `Pierwotna komenda sceny ${sceneNum} zawiodła, używanie generowania cichej ścieżki audio...`);
+        console.warn(`Scene ${sceneNum} primary render failed, using robust fallback...`, (err as Error).message);
+        updateJobProgress(jobId, {}, `Pierwotny filtr sceny ${sceneNum} zawiódł, używanie bezpiecznego renderera...`);
+
         let trimOptsFallback: string[] = [];
         if (typeof scene.trimStart === 'number' && scene.trimStart >= 0) {
           trimOptsFallback.push('-ss', scene.trimStart.toString());
@@ -714,9 +1035,10 @@ async function processCombineScenesJob(jobId: string, payload: CombineScenesPayl
           '-y',
           ...trimOptsFallback,
           '-i', downloadedAssetPath,
-          '-f', 'lavfi',
-          '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-          '-vf', scaleFilter,
+          ...(hasTtsAudio ? ['-i', sceneTtsPath] : ['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100']),
+          '-filter_complex', `[0:v]${scaleFilter}[v];[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[a]`,
+          '-map', '[v]',
+          '-map', '[a]',
           '-t', sceneDuration.toString(),
           '-c:v', 'libx264',
           '-pix_fmt', 'yuv420p',
@@ -975,6 +1297,7 @@ function normalizeSceneItem(sc: any, idx: number, totalCount: number): SceneInpu
   if (!sc || typeof sc !== 'object') {
     return {
       subtitles: `SCENA ${idx + 1}`,
+      voiceover_text: `SCENA ${idx + 1}`,
       videoUrl: getStockVideoUrl('nature', idx),
       duration: 6
     };
@@ -997,10 +1320,10 @@ function normalizeSceneItem(sc: any, idx: number, totalCount: number): SceneInpu
     getStockVideoUrl('nature', idx);
 
   const rawText =
-    sc.text ??
-    sc.subtitles ??
-    sc.caption ??
     sc.voiceover_text ??
+    sc.subtitles ??
+    sc.text ??
+    sc.caption ??
     sc['tekst_głosowy'] ??
     sc['tekst_glosowy'] ??
     sc.tekst ??
@@ -1018,15 +1341,20 @@ function normalizeSceneItem(sc: any, idx: number, totalCount: number): SceneInpu
     defaultDuration
   ) || defaultDuration;
 
+  const capStyle = sc.captionStyle || {};
+
   return {
     subtitles: rawText.toString().trim(),
+    voiceover_text: (sc.voiceover_text || sc['tekst_głosowy'] || sc['tekst_glosowy'] || rawText).toString().trim(),
     videoUrl,
     duration,
-    captionStyle: sc.captionStyle || {
-      position: 'bottom',
-      fontColor: idx === 0 ? 'yellow' : 'white',
+    captionStyle: {
+      position: capStyle.position || sc.position || 'bottom',
+      animation: capStyle.animation || sc.animation || 'word-by-word',
+      highlightColor: capStyle.highlightColor || sc.highlightColor || 'yellow',
+      fontSize: capStyle.fontSize || sc.fontSize || 54,
+      outlineWidth: capStyle.outlineWidth || sc.outlineWidth || 6,
       outlineColor: 'black',
-      outlineWidth: 3,
       boxColor: 'black@0.6'
     }
   };
@@ -1457,11 +1785,17 @@ router.post('/auto-pilot-shorts', async (req, res) => {
     const payload: CombineScenesPayload = {
       scenes: scenesToRender,
       backgroundMusicUrl: body.backgroundMusicUrl || 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3',
-      audioVolume: body.audioVolume ?? 0.3,
+      audioVolume: body.audioVolume ?? 0.2,
       outputResolution,
       fps: 30,
       async: body.async === true || req.query.async === 'true',
-      webhookUrl
+      webhookUrl,
+      tts: body.tts !== false,
+      ttsLanguage: body.ttsLanguage || language || 'pl',
+      ttsSpeed: body.ttsSpeed || 1.0,
+      syncDurationWithVoice: body.syncDurationWithVoice !== false,
+      captionAnimation: body.captionAnimation || body.animation || 'word-by-word',
+      highlightColor: body.highlightColor || 'yellow'
     };
 
     const jobId = `job_make_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -1557,11 +1891,17 @@ router.post('/combine-scenes', async (req, res) => {
   const payload: CombineScenesPayload = {
     scenes: normalizedScenes,
     backgroundMusicUrl: body.backgroundMusicUrl || '',
-    audioVolume: body.audioVolume ?? 0.3,
+    audioVolume: body.audioVolume ?? (body.tts !== false ? 0.2 : 0.3),
     outputResolution: body.outputResolution || body.resolution || '720x1280',
     fps: body.fps || 30,
     async: body.async === true || req.query.async === 'true',
-    webhookUrl: body.webhookUrl || (req.query.webhookUrl as string) || (req.headers['x-webhook-url'] as string)
+    webhookUrl: body.webhookUrl || (req.query.webhookUrl as string) || (req.headers['x-webhook-url'] as string),
+    tts: body.tts !== false,
+    ttsLanguage: body.ttsLanguage || body.language || 'pl',
+    ttsSpeed: body.ttsSpeed || 1.0,
+    syncDurationWithVoice: body.syncDurationWithVoice !== false,
+    captionAnimation: body.captionAnimation || body.animation || 'word-by-word',
+    highlightColor: body.highlightColor || 'yellow'
   };
 
   const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -1751,11 +2091,17 @@ const handleInboundWebhook = async (req: express.Request, res: express.Response)
       const payload: CombineScenesPayload = {
         scenes: scenesToRender,
         backgroundMusicUrl: body.backgroundMusicUrl || 'https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3',
-        audioVolume: body.audioVolume ?? 0.3,
+        audioVolume: body.audioVolume ?? (body.tts !== false ? 0.2 : 0.3),
         outputResolution: body.outputResolution || body.resolution || '720x1280',
         fps: 30,
         async: true,
-        webhookUrl: body.webhookUrl || (req.query.webhookUrl as string) || (req.headers['x-webhook-url'] as string)
+        webhookUrl: body.webhookUrl || (req.query.webhookUrl as string) || (req.headers['x-webhook-url'] as string),
+        tts: body.tts !== false,
+        ttsLanguage: body.ttsLanguage || body.language || 'pl',
+        ttsSpeed: body.ttsSpeed || 1.0,
+        syncDurationWithVoice: body.syncDurationWithVoice !== false,
+        captionAnimation: body.captionAnimation || body.animation || 'word-by-word',
+        highlightColor: body.highlightColor || 'yellow'
       };
 
       const newJob: Job = {
@@ -1836,6 +2182,54 @@ router.get('/webhook/logs', (req, res) => {
 router.delete('/webhook/logs', (req, res) => {
   webhookLogsStore.length = 0;
   res.json({ success: true, message: 'Historia logów webhooków została wyczyszczona.' });
+});
+
+// GET /api/tts/stream - Stream synthesized voice speech directly for preview
+router.get('/tts/stream', (req, res) => {
+  try {
+    const rawText = ((req.query.text as string) || 'Cześć! To jest podgląd lektora sztucznej inteligencji.').trim();
+    const lang = normalizeLanguageCode((req.query.lang as string) || 'pl');
+    const safeText = encodeURIComponent(rawText.slice(0, 200));
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${safeText}&tl=${lang}&client=tw-ob`;
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }, (ttsRes) => {
+      ttsRes.pipe(res);
+    }).on('error', (err) => {
+      res.status(500).json({ error: 'Błąd streamingu TTS', details: err.message });
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Błąd żądania TTS', details: (err as Error).message });
+  }
+});
+
+// POST /api/tts/preview - Generate sample audio file and return preview metrics
+router.post('/tts/preview', async (req, res) => {
+  try {
+    const { text, language = 'pl' } = req.body || {};
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'Pole "text" jest wymagane do wygenerowania próbki lektora.' });
+    }
+
+    const cleanLang = normalizeLanguageCode(language);
+    const previewFilename = `tts_preview_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.mp3`;
+    const destPath = path.join(EXPORTS_DIR, previewFilename);
+
+    const duration = await generateTtsAudio(text.trim(), cleanLang, destPath, TEMP_DIR);
+    const baseUrl = getPublicBaseUrl(req);
+
+    res.json({
+      success: true,
+      text: text.trim(),
+      language: cleanLang,
+      duration: Math.round(duration * 100) / 100,
+      audioUrl: `${baseUrl}/exports/${previewFilename}`,
+      streamUrl: `${baseUrl}/api/tts/stream?text=${encodeURIComponent(text.trim().slice(0, 200))}&lang=${cleanLang}`
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Błąd generowania próbki lektora TTS', details: (err as Error).message });
+  }
 });
 
 // Get All Recent and Active Jobs (/api/jobs)

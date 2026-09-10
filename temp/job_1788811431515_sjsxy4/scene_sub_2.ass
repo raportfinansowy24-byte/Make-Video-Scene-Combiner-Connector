@@ -1,0 +1,19 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: HormoziStyle,Montserrat,54,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,6,2,2,24,24,220,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:02.04,HormoziStyle,,0,0,0,,{\c&H0000E6FF&\fscx118\fscy118\b1}DYNAMICZNE{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}NAPISY {\c&H00FFFFFF&\b1}I {\c&H00FFFFFF&\b1}LEKTOR\N
+Dialogue: 0,0:00:02.04,0:00:03.27,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}DYNAMICZNE {\c&H0000E6FF&\fscx118\fscy118\b1}NAPISY{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}I {\c&H00FFFFFF&\b1}LEKTOR\N
+Dialogue: 0,0:00:03.27,0:00:03.68,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}DYNAMICZNE {\c&H00FFFFFF&\b1}NAPISY {\c&H0000E6FF&\fscx118\fscy118\b1}I{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}LEKTOR\N
+Dialogue: 0,0:00:03.68,0:00:04.90,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}DYNAMICZNE {\c&H00FFFFFF&\b1}NAPISY {\c&H00FFFFFF&\b1}I {\c&H0000E6FF&\fscx118\fscy118\b1}LEKTOR{\r\c&H00FFFFFF&\b1}\N
+Dialogue: 0,0:00:04.90,0:00:05.31,HormoziStyle,,0,0,0,,{\c&H0000E6FF&\fscx118\fscy118\b1}AI{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}DZIAŁAJĄ {\c&H00FFFFFF&\b1}DOSKONALE.\N
+Dialogue: 0,0:00:05.31,0:00:06.95,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}AI {\c&H0000E6FF&\fscx118\fscy118\b1}DZIAŁAJĄ{\r\c&H00FFFFFF&\b1} {\c&H00FFFFFF&\b1}DOSKONALE.\N
+Dialogue: 0,0:00:06.95,0:00:09.00,HormoziStyle,,0,0,0,,{\c&H00FFFFFF&\b1}AI {\c&H00FFFFFF&\b1}DZIAŁAJĄ {\c&H0000E6FF&\fscx118\fscy118\b1}DOSKONALE.{\r\c&H00FFFFFF&\b1}\N
