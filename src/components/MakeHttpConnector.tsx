@@ -577,7 +577,7 @@ export const MakeHttpConnector: React.FC = () => {
           syncDurationWithVoice: globalSyncDuration,
           captionAnimation: globalCaptionAnimation,
           highlightColor: globalHighlightColor,
-          webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw'
+
         },
         null,
         2
@@ -598,7 +598,7 @@ export const MakeHttpConnector: React.FC = () => {
           syncDurationWithVoice: globalSyncDuration,
           captionAnimation: globalCaptionAnimation,
           highlightColor: globalHighlightColor,
-          webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw'
+
         },
         null,
         2
@@ -630,7 +630,7 @@ export const MakeHttpConnector: React.FC = () => {
         syncDurationWithVoice: globalSyncDuration,
         captionAnimation: globalCaptionAnimation,
         highlightColor: globalHighlightColor,
-        webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw'
+
       },
       null,
       2
@@ -1789,10 +1789,10 @@ export const MakeHttpConnector: React.FC = () => {
                   </span>
                   <div className="flex items-center gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-lg font-mono text-xs text-emerald-300">
                     <span className="truncate flex-1">
-                      {appUrl}/api/combine-scenes?async=true&amp;webhookUrl=https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw
+                      {appUrl}/api/combine-scenes?async=true
                     </span>
                     <button
-                      onClick={() => handleCopy(`${appUrl}/api/combine-scenes?async=true&webhookUrl=https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw`, 'custom-make-url')}
+                      onClick={() => handleCopy(`${appUrl}/api/combine-scenes?async=true`, 'custom-make-url')}
                       className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
                       title="Kopiuj gotowy URL"
                     >
@@ -1801,7 +1801,7 @@ export const MakeHttpConnector: React.FC = () => {
                   </div>
                   <div className="text-[11px] text-slate-400 space-y-1 mt-1">
                     <p>• <strong>W polu Body Content w Make.com:</strong> Zostaw czysty, niezmodyfikowany ciąg <code className="text-amber-300 font-mono font-bold">{`{{211.json}}`}</code> (lub <code className="text-amber-300 font-mono font-bold">{`{{21.JsonString}}`}</code>) tak jak miałeś na początku!</p>
-                    <p>• <strong>Co to robi?</strong> Serwer od razu przyjmuje zadanie, wyciąga adres callback z adresu URL i po wypaleniu napisów oraz połączeniu scen automatycznie wyśle powiadomienie na Webhook Make: <code className="text-indigo-300 font-mono">https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw</code>.</p>
+                    <p>• <strong>Co to robi?</strong> Serwer po zakończeniu renderowania wyśle powiadomienie do Make na adres skonfigurowany po stronie serwera jako <code className="text-indigo-300 font-mono">MAKE_WEBHOOK_URL</code>.</p>
                   </div>
                 </div>
               </div>
@@ -1825,7 +1825,7 @@ export const MakeHttpConnector: React.FC = () => {
                       try {
                         const samplePayload = {
                           topic: '5 Niesamowitych Ciekawostek o Sztucznej Inteligencji',
-                          webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw',
+
                           scenes: [
                             {
                               text: 'TESTOWY WEBHOOK MAKE.COM',

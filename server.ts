@@ -68,6 +68,10 @@ function getPublicBaseUrl(req: express.Request): string {
   return `${proto}://${host}`;
 }
 
+function getConfiguredMakeWebhookUrl(): string | undefined {
+  return process.env.MAKE_WEBHOOK_URL?.trim() || undefined;
+}
+
 // Serve exported videos statically with CORS & range support
 app.use('/exports', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1752,7 +1756,7 @@ router.post('/auto-pilot-shorts', async (req, res) => {
     }
 
     const { filename, transition, topic, niche = 'Viral Shorts', language = 'Polski', outputResolution = '720x1280' } = body;
-    const webhookUrl = body.webhookUrl || (req.query.webhookUrl as string) || (req.headers['x-webhook-url'] as string);
+    const webhookUrl = getConfiguredMakeWebhookUrl();
     let scenesToRender: SceneInput[] = [];
     let title = filename || 'Make.com Short Video';
     let description = `#shorts #viral #${niche.toLowerCase().replace(/\s+/g, '')}`;
@@ -1895,7 +1899,7 @@ router.post('/combine-scenes', async (req, res) => {
     outputResolution: body.outputResolution || body.resolution || '720x1280',
     fps: body.fps || 30,
     async: body.async === true || req.query.async === 'true',
-    webhookUrl: body.webhookUrl || (req.query.webhookUrl as string) || (req.headers['x-webhook-url'] as string),
+    webhookUrl: getConfiguredMakeWebhookUrl(),
     tts: body.tts !== false,
     ttsLanguage: body.ttsLanguage || body.language || 'pl',
     ttsSpeed: body.ttsSpeed || 1.0,
@@ -2095,7 +2099,7 @@ const handleInboundWebhook = async (req: express.Request, res: express.Response)
         outputResolution: body.outputResolution || body.resolution || '720x1280',
         fps: 30,
         async: true,
-        webhookUrl: body.webhookUrl || (req.query.webhookUrl as string) || (req.headers['x-webhook-url'] as string),
+        webhookUrl: getConfiguredMakeWebhookUrl(),
         tts: body.tts !== false,
         ttsLanguage: body.ttsLanguage || body.language || 'pl',
         ttsSpeed: body.ttsSpeed || 1.0,
