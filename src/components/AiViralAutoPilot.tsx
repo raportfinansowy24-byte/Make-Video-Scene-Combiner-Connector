@@ -387,7 +387,7 @@ export const AiViralAutoPilot: React.FC<AiViralAutoPilotProps> = ({ onLoadScript
       syncDurationWithVoice: syncDurationWithVoice,
       outputResolution: resolution,
       async: true,
-      webhookUrl: 'https://hook.eu1.make.com/fck3exut5hpc4xdbuqr1sgha7fglyuhw'
+
     },
     null,
     2
